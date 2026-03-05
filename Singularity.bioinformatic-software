@@ -1,0 +1,182 @@
+# Author: H.K. Orel
+# Singularity recipe for creating a container with a bunch of bioinformatic software. (~9 GB, 5 March 2026)
+# When building, use: `apptainer build --fakeroot bio_tools.sif Singularity.bioinformatic-software`
+
+# To run a command, use:
+#    - apptainer exec my_tools.sif hybpiper -h (for conda packages)
+#    - apptainer exec my_tools.sif bwa mem [options] (for programs complied from source)
+
+
+Bootstrap: docker
+From: continuumio/miniconda3
+
+%labels
+    Maintainer hkore1
+    Version 1
+
+%environment
+    export PATH=/usr/local/bin:/usr/bin:/bin:$PATH
+    export PATH=/opt/conda/envs/ASTER-env/bin:$PATH
+    export PATH=/opt/conda/envs/GBS_SNP_mapping_and_assembly-env/bin:$PATH
+    export PATH=/opt/conda/envs/getorganelle-env/bin:$PATH
+    export PATH=/opt/conda/envs/hybpiper-env/bin:$PATH
+    export PATH=/opt/conda/envs/ipyrad-env/bin:$PATH
+    export PATH=/opt/conda/envs/macse-env/bin:$PATH
+    export PATH=/opt/conda/envs/paragone-env/bin:$PATH
+    export PATH=/opt/conda/envs/phynetpy-env/bin:$PATH
+    export PATH=/opt/conda/envs/phyparts-env/bin:$PATH
+    export PATH=/opt/conda/envs/whatshap-env/bin:$PATH
+
+    # Automatically find all subdirectories in /usr/local/bin that contain executables
+    # and add them to the PATH
+    for d in /usr/local/bin/*/; do
+        if [ -d "${d}bin" ]; then
+            export PATH="${d}bin:$PATH"
+        elif [ -d "${d}" ]; then
+            export PATH="${d}:$PATH"
+        fi
+    done
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+
+    # Install necessary compilers
+    apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        zlib1g-dev \
+        git \
+        wget \
+        unzip \
+        libnlopt-dev \
+        libnlopt-cxx-dev \
+        ca-certificates
+
+    ### Create and install programs in conda environments...
+
+    # ASTER
+    conda create -y -n ASTER-env -c bioconda aster
+
+    # GBS
+    conda create -y -n GBS_SNP_mapping_and_assembly-env -c bioconda -c conda-forge bowtie2 picard samtools bcftools
+
+    # GetOrganelle
+    conda create -y -n getorganelle-env -c bioconda -c conda-forge getorganelle
+
+    # HybPiper
+    conda create -y -n hybpiper-env -c defaults -c bioconda -c conda-forge hybpiper
+
+    # Ipyrad
+    conda create -y -n ipyrad-env -c bioconda ipyrad
+
+    # MACSE
+    conda create -y -n macse-env -c bioconda macse
+
+    # ParaGone
+    conda create -y -n paragone-env -c bioconda -c conda-forge paragone
+
+    # PhyNetPy
+    conda create -y -n phynetpy-env -c conda-forge python=3.9 pip
+    /opt/conda/bin/conda run -n phynetpy-env pip install phynetpy
+
+    # Phyparts
+    conda create -y -n phyparts-env -c bioconda -c conda-forge openjdk maven git
+    git clone https://bitbucket.org/blackrim/phyparts.git /opt/phyparts_source
+    cd /opt/phyparts_source
+    conda run -n phyparts-env mvn install
+    mkdir -p /opt/conda/envs/phyparts-env/bin
+    echo '#!/bin/bash' > /opt/conda/envs/phyparts-env/bin/phyparts
+    echo 'java -jar /opt/phyparts_source/target/phyparts-0.0.1-SNAPSHOT-jar-with-dependencies.jar "$@"' >> /opt/conda/envs/phyparts-env/bin/phyparts
+    chmod a+x /opt/conda/envs/phyparts-env/bin/phyparts
+
+    # Whatshap
+    conda create -y -n whatshap-env -c bioconda whatshap
+
+
+
+    ### Manual installation of other programs...
+
+    # BBTools (latest version)
+    wget https://sourceforge.net/projects/bbmap/files/latest/download -O BBTools.tar.gz
+    tar -xzf BBTools.tar.gz
+    cp -r bbmap /usr/local/bin/.
+    rm BBTools.tar.gz
+
+    # BEAST v. 2.7.7
+    wget https://github.com/CompEvol/beast2/releases/download/v2.7.7/BEAST.v2.7.7.Linux.x86.tgz
+    mkdir BEAST_v_2_7_7
+    tar -xzf BEAST.v2.7.7.Linux.x86.tgz -C BEAST_v_2_7_7 --strip-components=1
+    cp -r BEAST_v_2_7_7 /usr/local/bin/.
+    rm -r BEAST.v2.7.7.Linux.x86.tgz
+
+    # BWA (latest version)
+    git clone https://github.com/lh3/bwa.git
+    cd bwa && make; cd ..
+    cp -r bwa /usr/local/bin/.
+    rm -r bwa
+
+    # Diamond v. 2.1.23
+    wget http://github.com/bbuchfink/diamond/releases/download/v2.1.23/diamond-linux64.tar.gz
+    tar -xzf diamond-linux64.tar.gz
+    cp diamond /usr/local/bin/.
+    rm diamond-linux64.tar.gz
+
+    # Fastp (latest version)
+    wget http://opengene.org/fastp/fastp
+    cp -r fastp /usr/local/bin/.
+
+    # GATK4 v.4.6.2.0
+    wget https://github.com/broadinstitute/gatk/releases/download/4.6.2.0/gatk-4.6.2.0.zip
+    unzip gatk-4.6.2.0.zip
+    cp -r gatk-4.6.2.0/gatk /usr/local/bin/.
+    rm gatk-4.6.2.0.zip 
+
+    # IQTREE3
+    wget https://github.com/iqtree/iqtree3/releases/download/v3.0.1/iqtree-3.0.1-Linux.tar.gz
+    tar -xzf iqtree-3.0.1-Linux.tar.gz
+    cp -r iqtree-3.0.1-Linux /usr/local/bin/.
+    rm iqtree-3.0.1-Linux.tar.gz
+
+    # Julia v.1.12.4
+    wget https://julialang-s3.julialang.org/bin/linux/x64/1.12/julia-1.12.4-linux-x86_64.tar.gz
+    tar -xzf julia-1.12.4-linux-x86_64.tar.gz
+    cp -r julia-1.12.4 /usr/local/bin/.
+    rm julia-1.12.4-linux-x86_64.tar.gz
+
+    # NCBI Blast v.2.17.0
+    wget https://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/ncbi-blast-2.17.0+-x64-linux.tar.gz
+    tar -xzf ncbi-blast-2.17.0+-x64-linux.tar.gz
+    cp -r ncbi-blast-2.17.0+ /usr/local/bin/.
+    rm ncbi-blast-2.17.0+-x64-linux.tar.gz
+
+    # nQuire
+    git clone --recursive https://github.com/clwgg/nQuire
+    cd nQuire && make submodules && make; cd ..
+    cp -r nQuire /usr/local/bin/.
+    rm -r nQuire
+
+    # Phylommand
+    git clone https://github.com/RybergGroup/phylommand
+    cd phylommand/src/ && make
+    cd ../../
+    cp -r phylommand/ /usr/local/bin/.
+    rm -r phylommand
+
+    # RAxML v.1.2.2
+    wget https://github.com/amkozlov/raxml-ng/releases/download/1.2.2/raxml-ng_v1.2.2_linux_x86_64.zip
+    unzip raxml-ng_v1.2.2_linux_x86_64.zip
+    cp raxml-ng /usr/local/bin/.
+    rm -r raxml-ng_v1.2.2_linux_x86_64.zip data INSTALL.txt
+
+    # TrimAl
+    git clone https://github.com/inab/trimal
+    cd trimal/source/ && make; cd ../..
+    cp -r trimal/ /usr/local/bin/.
+    rm -r trimal
+
+
+
+    ### Make everything executable...
+    chmod a+x /usr/local/bin/*
+
+%runscript
+    exec /bin/bash "$@"
